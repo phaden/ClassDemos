@@ -11,7 +11,7 @@
     tools:context="bit.phaden.pullrequestdemo1.SecondActivity">
 
     <TextView
-        android:text="SecondActivity"
+        android:text="Now I am the launch activity"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:id="@+id/textView"
