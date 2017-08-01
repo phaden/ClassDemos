@@ -5,12 +5,12 @@ int wiggleProb;
 
 void setup()
 {
-  frameRate(30);
+  frameRate(24);
   size(1024, 1024);
   stroke(155);
   fill(255,0,0);
   
-  nFish = 20;
+  nFish = 100;
   fishArray = new Fish[nFish];
   
   int nFrames = 3;  //temp !!!
@@ -26,18 +26,19 @@ void setup()
   
   for (int f1=0; f1 < nFish/2; f1++)
   {
-    fishArray[f1] = new Fish(imageArrayFish1, 50 * f1, floor(random(height)));
+    fishArray[f1] = new Fish(imageArrayFish1, floor(random(width)), floor(random(height)));
   }
   
   for (int f2=nFish/2; f2 < nFish; f2++)
   {
-    fishArray[f2] = new Fish(imageArrayFish2, 50 * f2 + 10, floor(random(height)));
+    fishArray[f2] = new Fish(imageArrayFish2, floor(random(width)), floor(random(height)));
   }
   
-  wiggleProb = 10;
+  wiggleProb = 5;
   
 }
 
+// Timer handler
 void draw()
 {
   background(255);
@@ -63,7 +64,7 @@ void mouseClicked()
     
     float distance = linearDistance(checkPointX, checkPointY, mouseX, mouseY);
     if (distance < currentFish.panicRange)
-     currentFish.Stop();
+     currentFish.Panic(mouseX, mouseY);
   }
 }
 
@@ -88,8 +89,13 @@ float linearDistance(int x1, int y1, int x2, int y2)
     PImage[] images; 
     int xVel;
     int yVel;
+    int speed;   // linear speed, used with sin and cos to compute xVel and yVel
     int frameCounter;
     int panicRange;
+    int orientation;  // this is in degrees. Has to be converted to radians when used in sin and cos
+    boolean panicking;
+    int panicCount;
+    int panicInterval;
     
     Fish(PImage[] images, int startXLoc, int startYLoc)
     {
@@ -97,24 +103,41 @@ float linearDistance(int x1, int y1, int x2, int y2)
 
       xLoc = startXLoc;
       yLoc = startYLoc;
-      yVel = floor(random(4) + 1) * -1;
-      xVel = floor(random(2) + 1);
-       
-      if (random(1) == 0)
-        xVel *= -1;
+      speed = floor(random(4) + 2) * -1;
+
+      orientation = 0;
+      Turn(orientation);    // sets xVel and yVel
         
-       panicRange = 100;
+       panicRange = 250;
+       panicking = false;
+       panicCount = 0;
+       panicInterval = 100;
     }
     
     void Draw()
     { 
       frameCounter = (frameCounter + 1) % images.length;
       PImage currentImage = images[frameCounter];
-      image(currentImage, xLoc, yLoc);
+      
+      pushMatrix();
+      translate(xLoc,yLoc);
+      rotate(radians(-orientation));
+      image(currentImage, 0,0);
+      popMatrix();
     }
     
     void Move()
     {
+      if (panicking)
+      {
+        panicCount--;
+        if (panicCount <= 0)
+        {
+          panicking = false;
+          orientation = 0;
+          Turn(orientation);
+        }
+      }
       xLoc += xVel;
       yLoc += yVel;
       
@@ -130,14 +153,39 @@ float linearDistance(int x1, int y1, int x2, int y2)
       if (yLoc > height)
         yLoc = 0;
         
-        if (random(100) < wiggleProb)
-          xVel *= -1;
+        if ((random(100) < wiggleProb) && (!panicking))
+        {
+          orientation = floor(random(30));  // we want them to aim basically forward. between -30 and 30 degrees
+          if (random(10) < 5)
+            orientation *= -1;
+          Turn(orientation);
+        }
     }
     
     void Stop()
     {
       xVel = 0;
       yVel = 0;
+    }
+    
+    void Turn(int turnAngle)
+    {
+      float turnRadians = radians(turnAngle);
+      xVel = floor(sin(turnRadians) * speed);
+      yVel = floor(cos(turnRadians) * speed);
+     
+    }
+    
+    void Panic(int enemyX, int enemyY)
+    {
+      panicking = true;
+      panicCount = panicInterval;  // The fish will panic for this many cycles
+      
+      if (enemyX < xLoc) // you are to the right of the mouse, so turn clockwise to flee
+        orientation = -90;
+      else
+        orientation = 90;
+      Turn(orientation);
     }
     
     void Flip()
