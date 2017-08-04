@@ -14,7 +14,9 @@ static class SimParams
   static int PanicRange = 200;        // How close the mouseclick must be to cause avoidance
   static int PanicInterval = 50;     // How many frames it takes to return to normal swimming
   static int PanicOrientation = 45;   // Avoidance orientation. 90 =  all the way toward the edge
-  static int ScaleFactor = 3;
+  static int ScaleFactor = 3;        // Size the images to the visible space
+  static int EdgeAvoidanceTurnSize = 2; // in degrees. Keeps the fish more in the middle
+  static int EdgeAvoidanceMoveSize = 1;
 }
 
 
@@ -87,22 +89,24 @@ void draw()
   
   if (mousePressed)
     ellipse(mouseX, mouseY,25,25);  // For testing only -- to be replaced with motion detection
+    
   
   for (int f=0; f<nFish; f++)
-    fishArray[f].Draw(); //<>//
+    fishArray[f].Update(); //<>//
    
   for (int f=0; f<nFish; f++)
-    fishArray[f].Move();
+    fishArray[f].Action();
   
   // You can scare them once, then you have to go out of range before you can scare them again
+  
+  // Currently applying to all fish in pond, not using a distance measure
+  // Would need to be able to get position data from the Kinect to do this precisely
   ArrayList<PImage> bodyTrackList = kinect.getBodyTrackUser();
   
   if (bodyTrackList.size() == 0)  //reset
   {
     someoneHere = false;
-  }
-    
-    
+  }     
   if (!someoneHere)
   {
     if (bodyTrackList.size() > 0)
@@ -110,11 +114,8 @@ void draw()
       someoneHere = true;
       fishAllPanic();
     }
-  }
-    
-    
-    
-} // end mouse
+  }  
+} // end Timer Handler
 
 //====================================================================================
 void mouseClicked()
@@ -122,12 +123,14 @@ void mouseClicked()
   for (int f=0; f<nFish; f++)
   {
     Fish currentFish = fishArray[f]; //<>//
-    int checkPointX = currentFish.xLoc + currentFish.images[0].width;
-    int checkPointY = currentFish.yLoc + currentFish.images[0].height;
-  
     
-    float distance = linearDistance(checkPointX, checkPointY, mouseX, mouseY);
-    if (distance < currentFish.panicRange)
+   // Currently running off Kinect, so applying to all fish in pond, not using a distance measure
+    // Would need to be able to get position data from the Kinect to do this precisely
+    //int checkPointX = currentFish.xLoc + currentFish.images[0].width;
+    //int checkPointY = currentFish.yLoc + currentFish.images[0].height;
+    //float distance = linearDistance(checkPointX, checkPointY, mouseX, mouseY);
+    //if (distance < currentFish.panicRange)
+    
      currentFish.Panic(mouseX, mouseY);
   }
 } // end mouseclicked
@@ -154,7 +157,15 @@ float linearDistance(int x1, int y1, int x2, int y2)
 }
 
 //==================================================================================================
-//class declaration
+//class declarations
+//==================================================================================================
+
+enum EFishState
+{
+  SWIMMING,
+  PANICKING,
+  RECOVERING
+}
   
   class Fish
   {
@@ -170,6 +181,7 @@ float linearDistance(int x1, int y1, int x2, int y2)
     boolean panicking;
     int panicCount;
     int panicInterval;
+    EFishState fishState;
     
     Fish(PImage[] images, int startXLoc, int startYLoc)
     {
@@ -178,6 +190,8 @@ float linearDistance(int x1, int y1, int x2, int y2)
       xLoc = startXLoc;
       yLoc = startYLoc;
       speed = floor(random(SimParams.FishSpeed) + SimParams.MinimumFishSpeed) * -1;
+      
+      frameCounter = floor(random(SimParams.FramesInAnimation));    // so they aren't in lock step
 
       orientation = 0;
       Turn(orientation);    // sets xVel and yVel
@@ -186,7 +200,61 @@ float linearDistance(int x1, int y1, int x2, int y2)
        panicking = false;
        panicCount = 0;
        panicInterval = SimParams.PanicInterval;
+       
+       fishState = EFishState.SWIMMING;
     }
+    
+    //========================================================================
+    // FSM Methods
+    //========================================================================
+    void Update()
+    {
+      switch (fishState)
+      {
+        case SWIMMING:
+          // Fish moved out of this state asynchronously in Timer and mouseDown. Would be better here... !!!
+        break;
+        case PANICKING:
+          if (panicCount <= 0)
+            fishState = EFishState.RECOVERING;
+        break;
+        case RECOVERING:
+          if (orientation == 0)
+          {
+            fishState = EFishState.SWIMMING;
+            Turn(orientation);
+          }
+        break;
+      }
+    } // end FSM update
+    
+    void Action()
+    {
+      switch(fishState)
+      {
+        case SWIMMING:
+          //Move & Draw is the default action for all states
+        break;
+        case PANICKING: // calm down
+          panicCount--;
+        break;
+        case RECOVERING: // returning gradually to forward
+         if (orientation < 0)
+           orientation++;
+           else
+           orientation--;
+          
+         Turn(orientation);
+        break;
+      } // end switch
+      Move();
+      Draw();
+    } // end FSM action
+    
+    //========================================================================
+    // General Methods 
+    //========================================================================
+    
     
     void Draw()
     { 
@@ -200,34 +268,41 @@ float linearDistance(int x1, int y1, int x2, int y2)
       popMatrix();
     }
     
+     //========================================================================
+    // Move with Wiggle and edge adjustment
     void Move()
     {
-      if (panicking)
-      {
-        panicCount--;
-        if (panicCount <= 0)
-        {
-          panicking = false;
-          orientation = 0;
-          Turn(orientation);
-        }
-      }
+      
       xLoc += xVel;
       yLoc += yVel;
       
-      if (xLoc + images[0].width < 0)
+      // If you swim off the edge, wrap around
+      if (xLoc < -images[0].width/SimParams.ScaleFactor)
+      {
         xLoc = width;
+      }
         
       if (xLoc > width)
-        xLoc = 0;
+      {
+         xLoc = 0;
+      }
         
-      if (yLoc + images[0].height < 0)
+      // Wrap around at the top
+      if (yLoc <  -images[0].height/SimParams.ScaleFactor)
         yLoc = height;
         
+      // Not needed since they only go up, but here for completeness
       if (yLoc > height)
         yLoc = 0;
-        
-        if ((random(100) < SimParams.WiggleProb) && (!panicking))
+       
+      // Stochastic change in orientation
+      wiggle();
+    }
+    
+    void wiggle()
+    {
+      // Probabilistic wiggle, not when fleeing. Probably better to get this difference up into the FSM !!!
+        if ((random(100) < SimParams.WiggleProb) && (fishState != EFishState.PANICKING))
         {
           orientation = floor(random(SimParams.WiggleIntensity));  // we want them to aim basically forward. between -WI and +WI degrees
           if (random(10) < 5)  // half left/ half right wiggles
@@ -252,7 +327,7 @@ float linearDistance(int x1, int y1, int x2, int y2)
     
     void Panic(int enemyX, int enemyY)  // enemyY not used in this version 3-8-17
     {
-      panicking = true;
+      fishState = EFishState.PANICKING;
       panicCount = panicInterval;  // The fish will panic for this many cycles
       
       if (enemyX < xLoc) // you are to the right of the mouse, so turn clockwise to flee
